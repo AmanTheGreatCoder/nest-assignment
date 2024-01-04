@@ -3,8 +3,8 @@ export default () => ({
     url: process.env.DATABASE_URL,
   },
   jwt: {
-    secret: process.env.JWT_SECRET,
-    expiresIn: process.env.JWT_EXPIRES_IN,
+    secret: process.env.JWT_SECRET_KEY,
+    expiresIn: process.env.JWT_EXPIRATION_TIME,
   },
   mail: {
     mailUser: process.env.MAIL_USER,

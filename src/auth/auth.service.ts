@@ -20,7 +20,6 @@ export class AuthService {
   async getTokens(
     userId: number,
   ): Promise<{ accessToken: string; refreshToken: string }> {
-    // Check if the user exists
     const user = await this.prismaService.getPrisma().user.findUnique({
       where: { id: userId },
     });
@@ -37,7 +36,6 @@ export class AuthService {
   }
 
   generateAccessToken(userId: number): string {
-    // Generate a new access token using the user's ID
     return this.jwtService.sign({
       sub: userId,
     });
@@ -71,29 +69,9 @@ export class AuthService {
     return otp;
   }
 
-  async generateAndSendOTP(email: string): Promise<string | null> {
-    const user = await this.prismaService.getPrisma().user.findUnique({
-      where: { email },
-    });
-
-    if (!user) {
-      return null;
-    }
-
-    const otp = this.generateRandomOTP();
-
-    await this.sendOTP(email, otp);
-
-    await this.prismaService.getPrisma().user.update({
-      where: { id: user.id },
-      data: { otp },
-    });
-
-    return otp;
-  }
-
-  private async sendOTP(email: string, otp: string): Promise<void> {
+  async sendOTP(email: string): Promise<string> {
     try {
+      const otp = this.generateRandomOTP();
       const transporter = nodemailer.createTransport({
         host: this.configService.get('mail.mailHost'),
         port: 587,
@@ -111,6 +89,7 @@ export class AuthService {
         text: `Your OTP for verification is: ${otp}`,
       };
       await transporter.sendMail(mailOptions);
+      return otp;
     } catch (error) {
       console.log('error', error);
       throw new InternalServerErrorException('Failed to send OTP.');

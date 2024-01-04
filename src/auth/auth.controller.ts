@@ -1,17 +1,17 @@
 import {
-  Controller,
-  Post,
-  Body,
-  UnauthorizedException,
   BadRequestException,
-  InternalServerErrorException,
+  Body,
+  Controller,
+  NotFoundException,
+  Post,
+  UnauthorizedException,
 } from '@nestjs/common';
-import { AuthService } from './auth.service';
-import { PrismaService } from 'src/prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
-import { RegisterDto } from './dtos/register.dto';
-import { LoginDto } from './dtos/login.dto';
+import { PrismaService } from 'src/prisma/prisma.service';
 import { UserService } from 'src/user/user.service';
+import { AuthService } from './auth.service';
+import { LoginDto } from './dtos/login.dto';
+import { RegisterDto } from './dtos/register.dto';
 import { VerifyOTPDto } from './dtos/verify-otp.dto';
 
 @Controller('auth')
@@ -23,7 +23,9 @@ export class AuthController {
   ) {}
 
   @Post('refresh-token')
-  async refreshToken(@Body() data: { refreshToken: string }) {
+  async refreshToken(
+    @Body() data: { refreshToken: string },
+  ): Promise<{ accessToken: string }> {
     const { refreshToken } = data;
 
     const userId = await this.authService.verifyRefreshToken(refreshToken);
@@ -32,7 +34,8 @@ export class AuthController {
       throw new UnauthorizedException('Invalid Refresh Token');
     }
 
-    return this.authService.generateAccessToken(userId);
+    const accessToken = this.authService.generateAccessToken(userId);
+    return { accessToken };
   }
 
   @Post('register')
@@ -45,15 +48,15 @@ export class AuthController {
     if (existingUser) {
       throw new BadRequestException('Email already Exists');
     }
-    const otp = await this.authService.generateAndSendOTP(email);
 
+    const otp = await this.authService.sendOTP(email);
     const saltOrRounds = await bcrypt.genSalt();
     const hashedPassword = await bcrypt.hash(password, saltOrRounds);
     await this.prisma.getPrisma().user.create({
-      data: { email, otp, password: hashedPassword },
+      data: { email, password: hashedPassword, otp },
     });
 
-    return { message: 'OTP sent to email for verification' };
+    return { message: 'OTP sent to email for verification', otp };
   }
 
   @Post('verify-otp')
@@ -77,19 +80,21 @@ export class AuthController {
   }
 
   @Post('login')
-  async login(@Body() loginData: LoginDto) {
+  async login(@Body() loginData: LoginDto): Promise<{ accessToken: string }> {
+    const { email, password } = loginData;
     const user = await this.prisma.getPrisma().user.findUnique({
-      where: { email: loginData.email },
+      where: { email },
     });
 
-    if (!user || user.password !== loginData.password) {
-      throw new UnauthorizedException('Invalid credentials');
+    if (!user) {
+      throw new NotFoundException('Email does not exists');
     }
 
-    const { accessToken, refreshToken } = await this.authService.getTokens(
-      user.id,
-    );
-
-    return { accessToken, refreshToken };
+    const result = await bcrypt.compare(password, user.password);
+    if (result) {
+      return await this.authService.getTokens(user.id);
+    } else {
+      throw new UnauthorizedException('Invalid Credentials');
+    }
   }
 }
